@@ -1,0 +1,7 @@
+import { NextResponse } from "next/server";
+import { prisma } from "@/lib/prisma";
+import { getAdminSession } from "@/lib/auth";
+import { z } from "zod";
+export async function GET() { if (!(await getAdminSession())) return NextResponse.json({ error: "Accès administrateur requis." }, { status: 403 }); return NextResponse.json({ reviews: await prisma.review.findMany({ include: { product: { select: { name: true } }, user: { select: { name: true } } }, orderBy: { createdAt: "desc" } }) }); }
+export async function PATCH(request: Request) { if (!(await getAdminSession())) return NextResponse.json({ error: "Accès administrateur requis." }, { status: 403 }); const p = z.object({ id: z.string(), approved: z.boolean() }).safeParse(await request.json()); if (!p.success) return NextResponse.json({ error: "Avis invalide." }, { status: 400 }); return NextResponse.json({ review: await prisma.review.update({ where: { id: p.data.id }, data: { approved: p.data.approved } }) }); }
+export async function DELETE(request: Request) { if (!(await getAdminSession())) return NextResponse.json({ error: "Accès administrateur requis." }, { status: 403 }); const p = z.object({ id: z.string() }).safeParse(await request.json()); if (!p.success) return NextResponse.json({ error: "Avis invalide." }, { status: 400 }); await prisma.review.delete({ where: { id: p.data.id } }); return NextResponse.json({ ok: true }); }

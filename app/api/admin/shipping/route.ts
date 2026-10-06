@@ -1,0 +1,9 @@
+import { NextResponse } from "next/server";
+import { prisma } from "@/lib/prisma";
+import { getAdminSession } from "@/lib/auth";
+import { z } from "zod";
+const schema = z.object({ id: z.string().optional(), wilaya: z.string().trim().min(2).max(80), cost: z.coerce.number().nonnegative() });
+export async function GET() { if (!(await getAdminSession())) return NextResponse.json({ error: "Accès administrateur requis." }, { status: 403 }); return NextResponse.json({ rates: await prisma.shippingRate.findMany({ orderBy: { wilaya: "asc" } }) }); }
+export async function POST(request: Request) { if (!(await getAdminSession())) return NextResponse.json({ error: "Accès administrateur requis." }, { status: 403 }); const p = schema.omit({ id: true }).safeParse(await request.json()); if (!p.success) return NextResponse.json({ error: "Tarif invalide." }, { status: 400 }); return NextResponse.json({ rate: await prisma.shippingRate.create({ data: p.data }) }, { status: 201 }); }
+export async function PATCH(request: Request) { if (!(await getAdminSession())) return NextResponse.json({ error: "Accès administrateur requis." }, { status: 403 }); const p = schema.required({ id: true }).safeParse(await request.json()); if (!p.success) return NextResponse.json({ error: "Tarif invalide." }, { status: 400 }); const { id, ...data } = p.data; return NextResponse.json({ rate: await prisma.shippingRate.update({ where: { id }, data }) }); }
+export async function DELETE(request: Request) { if (!(await getAdminSession())) return NextResponse.json({ error: "Accès administrateur requis." }, { status: 403 }); const p = z.object({ id: z.string() }).safeParse(await request.json()); if (!p.success) return NextResponse.json({ error: "Tarif invalide." }, { status: 400 }); await prisma.shippingRate.delete({ where: { id: p.data.id } }); return NextResponse.json({ ok: true }); }

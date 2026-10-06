@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 800" role="img" aria-labelledby="title desc">
+  <title id="title">Image produit indisponible</title>
+  <desc id="desc">Illustration de remplacement pour un produit sans image</desc>
+  <rect width="800" height="800" fill="#e2e8f0"/>
+  <rect x="170" y="210" width="460" height="330" rx="32" fill="#cbd5e1"/>
+  <circle cx="320" cy="340" r="48" fill="#94a3b8"/>
+  <path d="M205 500l125-115 90 80 65-60 110 95H205z" fill="#64748b"/>
+  <text x="400" y="650" fill="#475569" font-family="Arial,sans-serif" font-size="32" text-anchor="middle">SOLUSHOP</text>
+</svg>
