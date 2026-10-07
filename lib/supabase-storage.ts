@@ -1,33 +1,72 @@
-const bucket = process.env.SUPABASE_STORAGE_BUCKET ?? "product-images";
+import { createClient } from "@supabase/supabase-js";
 
-function getStorageConfig() {
+export const PRODUCT_IMAGE_BUCKET = "image";
+export const MAX_PRODUCT_IMAGE_SIZE = 5 * 1024 * 1024;
+export const ALLOWED_PRODUCT_IMAGE_TYPES = new Set([
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+]);
+
+function getStorageClient() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const secretKey = process.env.SUPABASE_SECRET_KEY;
 
   if (!supabaseUrl || !secretKey) {
-    throw new Error("Supabase Storage requires NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SECRET_KEY on the server.");
+    throw new Error(
+      "Supabase Storage requires NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SECRET_KEY on the server.",
+    );
   }
 
-  return { supabaseUrl: supabaseUrl.replace(/\/$/, ""), secretKey };
+  return createClient(supabaseUrl, secretKey, {
+    auth: {
+      autoRefreshToken: false,
+      detectSessionInUrl: false,
+      persistSession: false,
+    },
+  });
 }
 
-export async function uploadProductImage(path: string, content: Buffer, contentType: string) {
-  const { supabaseUrl, secretKey } = getStorageConfig();
-  const response = await fetch(`${supabaseUrl}/storage/v1/object/${bucket}/${path}`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${secretKey}`,
-      apikey: secretKey,
-      "Content-Type": contentType,
-      "x-upsert": "true",
-    },
-    body: content as unknown as BodyInit,
-  });
+export async function uploadProductImage(path: string, file: File) {
+  const supabase = getStorageClient();
+  const { error } = await supabase.storage
+    .from(PRODUCT_IMAGE_BUCKET)
+    .upload(path, Buffer.from(await file.arrayBuffer()), {
+      contentType: file.type,
+      upsert: false,
+    });
 
-  if (!response.ok) {
-    const details = await response.text();
-    throw new Error(`Supabase Storage upload failed (${response.status}): ${details}`);
+  if (error) {
+    throw new Error(`Supabase Storage upload failed: ${error.message}`);
   }
 
-  return `${supabaseUrl}/storage/v1/object/public/${bucket}/${path}`;
+  const { data } = supabase.storage
+    .from(PRODUCT_IMAGE_BUCKET)
+    .getPublicUrl(path);
+
+  return data.publicUrl;
+}
+
+export async function removeProductImages(paths: string[]) {
+  if (paths.length === 0) return;
+
+  const supabase = getStorageClient();
+  const { error } = await supabase.storage
+    .from(PRODUCT_IMAGE_BUCKET)
+    .remove(paths);
+
+  if (error) {
+    throw new Error(`Supabase Storage delete failed: ${error.message}`);
+  }
+}
+
+export function getProductStoragePath(url: string) {
+  try {
+    const pathname = new URL(url).pathname;
+    const prefix = `/storage/v1/object/public/${PRODUCT_IMAGE_BUCKET}/`;
+    if (!pathname.startsWith(prefix)) return null;
+    return decodeURIComponent(pathname.slice(prefix.length));
+  } catch {
+    return null;
+  }
 }
