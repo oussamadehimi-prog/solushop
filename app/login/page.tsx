@@ -23,15 +23,15 @@ export default function LoginPage() {
       headers: { "Content-Type": "application/json" },
     });
 
+    const payload = await response.json().catch(() => null);
     setLoading(false);
 
     if (!response.ok) {
-      const payload = await response.json();
-      setError(payload.error || "Erreur de connexion.");
+      setError(payload?.error || "Erreur de connexion.");
       return;
     }
 
-    router.push("/");
+    router.push("/admin");
     router.refresh();
   };
 

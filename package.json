@@ -10,7 +10,8 @@
     "db:generate": "prisma generate",
     "db:validate": "prisma validate",
     "db:export-sqlite": "node scripts/migrate-sqlite-data.cjs export",
-    "db:import-postgres": "node scripts/migrate-sqlite-data.cjs import"
+    "db:import-postgres": "node scripts/migrate-sqlite-data.cjs import",
+    "db:ensure-admin": "node scripts/ensure-admin.cjs"
   },
   "dependencies": {
     "@prisma/client": "5.22.0",
