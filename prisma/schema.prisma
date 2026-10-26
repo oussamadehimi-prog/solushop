@@ -58,7 +58,6 @@ model Product {
   price         Float
   oldPrice      Float?
   promoPrice    Float?
-  sku           String            @unique
   brand         String?
   stock         Int               @default(0)
   lowStockThreshold Int           @default(5)
@@ -139,6 +138,8 @@ model Order {
   createdAt     DateTime    @default(now())
   updatedAt     DateTime    @default(now()) @updatedAt
   rejectionReason String?
+  deliveryMode  String?
+  stockRestoredAt DateTime?
   items         OrderItem[]
   payment       Payment?
 }
@@ -208,7 +209,15 @@ model ShippingRate {
   id        String   @id @default(cuid())
   wilaya    String   @unique
   cost      Float
+  active    Boolean  @default(true)
   createdAt DateTime @default(now())
+}
+
+model DeliverySetting {
+  id            String   @id @default("default")
+  officeFee     Float?
+  homeSurcharge Float?
+  updatedAt     DateTime @updatedAt
 }
 
 model Notification {

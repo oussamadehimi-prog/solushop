@@ -1,18 +1,11 @@
-import { redirect } from "next/navigation";
 import { AdminStatCard } from "@/components/admin-stat-card";
 import { AdminOrders } from "@/components/admin-orders";
 import { AdminSessionActions } from "@/components/admin-session-actions";
-import { requireAdmin } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { orderStatusLabel } from "@/lib/order-status";
 import { formatCurrency } from "@/lib/utils";
 
 export default async function AdminDashboardPage() {
-  try {
-    await requireAdmin();
-  } catch {
-    redirect("/login");
-  }
-
   const orders = await prisma.order.findMany({ include: { items: true } });
   const products = await prisma.product.findMany({ where: { active: true } });
   const customerCount = new Set(orders.map((order) => order.phone)).size;
@@ -30,6 +23,15 @@ export default async function AdminDashboardPage() {
   const cancelled = orders.filter((order) => order.status === "CANCELLED").length;
   const revenue = orders.reduce((sum, order) => sum + order.total, 0);
 
+  const statusOverview = [
+    { status: "PENDING", count: pending },
+    { status: "CONFIRMED", count: confirmed },
+    { status: "PREPARING", count: preparing },
+    { status: "SHIPPED", count: shipped },
+    { status: "DELIVERED", count: delivered },
+    { status: "CANCELLED", count: cancelled },
+  ];
+
   const lowStock = products.filter((product) => product.stock <= 5).length;
 
   return (
@@ -43,15 +45,15 @@ export default async function AdminDashboardPage() {
 
       <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-4">
         <AdminStatCard title="Commandes total" value={String(orders.length)} subtext="Total" />
-        <AdminStatCard title="Commandes en attente" value={String(pending)} subtext="Pending" />
-        <AdminStatCard title="Confirmées" value={String(confirmed)} subtext="Confirmed" />
+        <AdminStatCard title="Commandes en attente" value={String(pending)} subtext="En attente" />
+        <AdminStatCard title="Confirmées" value={String(confirmed)} subtext="Confirmées" />
         <AdminStatCard title="Chiffre d’affaires" value={formatCurrency(revenue)} subtext="Revenue" />
       </div>
 
       <div className="mt-8 grid gap-5 md:grid-cols-2 xl:grid-cols-4">
-        <AdminStatCard title="Préparation" value={String(preparing)} subtext="Preparing" />
-        <AdminStatCard title="Expédiées" value={String(shipped)} subtext="Shipped" />
-        <AdminStatCard title="Livrées" value={String(delivered)} subtext="Delivered" />
+        <AdminStatCard title="Préparation" value={String(preparing)} subtext="En préparation" />
+        <AdminStatCard title="Expédiées" value={String(shipped)} subtext="Expédiées" />
+        <AdminStatCard title="Livrées" value={String(delivered)} subtext="Livrées" />
         <AdminStatCard title="Clients" value={String(customerCount)} subtext="Clients ayant commandé" />
       </div>
 
@@ -77,17 +79,11 @@ export default async function AdminDashboardPage() {
         <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
           <h3 className="text-lg font-bold text-slate-900">Statuts des commandes</h3>
           <div className="mt-5 space-y-4">
-            {[
-              ["Pending", pending],
-              ["Confirmed", confirmed],
-              ["Preparing", preparing],
-              ["Shipped", shipped],
-              ["Delivered", delivered],
-            ].map(([label, value]) => (
-              <div key={label}>
-                <div className="mb-1 flex justify-between text-sm text-slate-600"><span>{label}</span><span>{value}</span></div>
+            {statusOverview.map(({ status, count }) => (
+              <div key={status}>
+                <div className="mb-1 flex justify-between text-sm text-slate-600"><span>{orderStatusLabel(status)}</span><span>{count}</span></div>
                 <div className="h-2 rounded-full bg-slate-100">
-                  <div className="h-2 rounded-full bg-slate-900" style={{ width: `${Math.min((Number(value) / Math.max(orders.length, 1)) * 100, 100)}%` }} />
+                  <div className="h-2 rounded-full bg-slate-900" style={{ width: `${Math.min((count / Math.max(orders.length, 1)) * 100, 100)}%` }} />
                 </div>
               </div>
             ))}

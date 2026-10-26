@@ -3,7 +3,7 @@ import Link from "next/link";
 export default async function OrderConfirmationPage({
   searchParams,
 }: {
-  searchParams?: Promise<{ number?: string; phone?: string }>;
+  searchParams?: Promise<{ number?: string }>;
 }) {
   const params = (await searchParams) ?? {};
 
@@ -16,7 +16,6 @@ export default async function OrderConfirmationPage({
         <p className="mt-2 text-sm text-slate-600">Notre équipe va la traiter prochainement. Statut : En attente de confirmation.</p>
         <div className="mt-6 flex justify-center gap-3">
           <Link href="/" className="rounded-full bg-slate-900 px-5 py-3 font-semibold text-white">Retour à l’accueil</Link>
-          <Link href={`/track-order${params.number && params.phone ? `?number=${encodeURIComponent(params.number)}&phone=${encodeURIComponent(params.phone)}` : ""}`} className="rounded-full border border-slate-300 px-5 py-3 font-semibold text-slate-900">Suivre ma commande</Link>
         </div>
       </div>
     </div>

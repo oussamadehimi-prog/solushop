@@ -1,6 +1,8 @@
 "use client";
 
 import { useState } from "react";
+import { deliveryModeLabel } from "@/lib/delivery-config";
+import { ORDER_STATUSES, orderStatusLabel } from "@/lib/order-status";
 import { formatCurrency } from "@/lib/utils";
 
 type AdminOrder = {
@@ -12,11 +14,13 @@ type AdminOrder = {
   wilaya: string;
   commune: string;
   total: number;
+  shippingFee: number;
+  deliveryMode: string | null;
   createdAt: Date;
   items: Array<{ id: string; quantity: number; product: { name: string } }>;
 };
 
-const statuses = ["PENDING", "CONFIRMED", "PREPARING", "SHIPPED", "DELIVERED", "CANCELLED", "REJECTED"];
+const statuses = ORDER_STATUSES;
 
 export function AdminOrders({ initialOrders }: { initialOrders: AdminOrder[] }) {
   const [orders, setOrders] = useState(initialOrders);
@@ -52,13 +56,13 @@ export function AdminOrders({ initialOrders }: { initialOrders: AdminOrder[] }) 
               <div>
                 <p className="font-bold text-slate-900">#{order.number}</p>
                 <p className="text-sm text-slate-600">{order.customerName} · {order.phone}</p>
-                <p className="text-sm text-slate-500">{order.commune}, {order.wilaya} · {new Date(order.createdAt).toLocaleDateString("fr-FR")}</p>
+                <p className="text-sm text-slate-500">{order.commune}, {order.wilaya} · {deliveryModeLabel(order.deliveryMode)} · frais {formatCurrency(order.shippingFee)} · total {formatCurrency(order.total)} · {new Date(order.createdAt).toLocaleDateString("fr-FR")}</p>
                 <p className="mt-2 text-sm text-slate-600">{order.items.map((item) => `${item.product.name} x ${item.quantity}`).join(", ")}</p>
               </div>
               <div className="flex items-center gap-3">
                 <span className="font-bold text-slate-900">{formatCurrency(order.total)}</span>
                 <select value={order.status} onChange={(event) => updateStatus(order.id, event.target.value)} className="rounded-full border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-semibold">
-                  {statuses.map((status) => <option key={status} value={status}>{status}</option>)}
+                  {statuses.map((status) => <option key={status} value={status}>{orderStatusLabel(status)}</option>)}
                 </select>
               </div>
             </div>

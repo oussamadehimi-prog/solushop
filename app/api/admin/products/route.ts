@@ -18,7 +18,6 @@ const productSchema = z.object({
   description: z.string().trim().min(2),
   categoryId: z.string().min(1),
   brand: z.string().trim().max(100).optional().or(z.literal("")),
-  sku: z.string().trim().min(1).max(80),
   price: z.coerce.number().positive(),
   oldPrice: z.coerce.number().nonnegative().nullable().optional(),
   promoPrice: z.coerce.number().nonnegative().nullable().optional(),
@@ -40,7 +39,6 @@ function productData(data: ProductInput) {
     description: data.description,
     categoryId: data.categoryId,
     brand: data.brand || null,
-    sku: data.sku,
     price: data.price,
     oldPrice: data.oldPrice ?? null,
     promoPrice: data.promoPrice ?? null,
@@ -96,7 +94,6 @@ async function parseRequest(request: Request) {
       description: value("description"),
       categoryId: value("categoryId"),
       brand: value("brand"),
-      sku: value("sku"),
       price: value("price"),
       oldPrice: value("oldPrice") || null,
       promoPrice: value("promoPrice") || null,
@@ -144,7 +141,7 @@ export async function GET(request: Request) {
   const search = url.searchParams.get("search")?.trim() || undefined;
   const products = await prisma.product.findMany({
     where: search
-      ? { OR: [{ name: { contains: search } }, { sku: { contains: search } }] }
+      ? { name: { contains: search } }
       : undefined,
     include: { category: true, images: true },
     orderBy: { createdAt: "desc" },
@@ -206,7 +203,7 @@ export async function POST(request: Request) {
     await cleanupUploadedFiles(uploadedPaths);
     console.error("Admin product creation failed", error);
     if (error instanceof Error && error.message.includes("Unique constraint")) {
-      return NextResponse.json({ error: "Le SKU existe déjà." }, { status: 409 });
+      return NextResponse.json({ error: "Un produit avec ces données existe déjà." }, { status: 409 });
     }
     return NextResponse.json({ error: "Impossible de créer le produit." }, { status: 500 });
   }
@@ -296,7 +293,7 @@ export async function PATCH(request: Request) {
     await cleanupUploadedFiles(uploadedPaths);
     console.error("Admin product update failed", error);
     if (error instanceof Error && error.message.includes("Unique constraint")) {
-      return NextResponse.json({ error: "Le SKU existe déjà." }, { status: 409 });
+      return NextResponse.json({ error: "Un produit avec ces données existe déjà." }, { status: 409 });
     }
     return NextResponse.json({ error: "Impossible de modifier le produit." }, { status: 500 });
   }

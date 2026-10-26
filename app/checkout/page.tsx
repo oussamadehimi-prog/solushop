@@ -3,19 +3,115 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCart } from "@/components/cart-provider";
+import {
+  DELIVERY_MODES,
+  readDeliveryPreference,
+  saveDeliveryPreference,
+  type DeliveryMode,
+  type DeliveryPricing,
+  type DeliveryWilaya,
+  type DeliveryWilayaList,
+} from "@/lib/delivery-config";
 import { formatCurrency } from "@/lib/utils";
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 
 export default function CheckoutPage() {
   const router = useRouter();
   const { items, subtotal, clear } = useCart();
   const [processing, setProcessing] = useState(false);
   const [error, setError] = useState("");
-  const shippingFee = 400;
-  const total = subtotal + shippingFee;
+  const [deliveryMode, setDeliveryMode] = useState<DeliveryMode>("OFFICE");
+  const [wilaya, setWilaya] = useState("");
+  const [wilayas, setWilayas] = useState<DeliveryWilaya[]>([]);
+  const [wilayasError, setWilayasError] = useState("");
+  const [wilayasLoaded, setWilayasLoaded] = useState(false);
+  const [deliveryResult, setDeliveryResult] = useState<{ key: string; pricing: DeliveryPricing } | null>(null);
+  const [deliveryFailure, setDeliveryFailure] = useState<{ key: string; message: string } | null>(null);
+  const deliveryKey = `${wilaya}|${deliveryMode}`;
+  const delivery = deliveryResult?.key === deliveryKey ? deliveryResult.pricing : null;
+  const deliveryError = deliveryFailure?.key === deliveryKey ? deliveryFailure.message : "";
+  const deliveryLoading = Boolean(wilaya) && !delivery && !deliveryError;
+  const total = delivery ? subtotal + delivery.shippingFee : null;
+
+  useEffect(() => {
+    let active = true;
+
+    fetch("/api/delivery/wilayas", { cache: "no-store" })
+      .then(async (response) => {
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(data.error || "Wilayas de livraison indisponibles.");
+        return data as Partial<DeliveryWilayaList>;
+      })
+      .then((data) => {
+        if (!active) return;
+
+        const list = Array.isArray(data.wilayas) ? data.wilayas : [];
+        const preference = readDeliveryPreference();
+        const preferred = preference
+          ? list.find((entry) => entry.wilaya.toLowerCase() === preference.wilaya.toLowerCase())
+          : undefined;
+
+        setWilayas(list);
+        setWilaya(preferred?.wilaya ?? list[0]?.wilaya ?? "");
+        if (preference) setDeliveryMode(preference.mode);
+        if (!data.configured) {
+          setWilayasError("Les tarifs de livraison ne sont pas encore configurés par l’administrateur.");
+        } else if (list.length === 0) {
+          setWilayasError("Aucune wilaya n’est actuellement disponible pour la livraison.");
+        }
+        setWilayasLoaded(true);
+      })
+      .catch((reason: unknown) => {
+        if (active) {
+          setWilayas([]);
+          setWilayasError(reason instanceof Error ? reason.message : "Wilayas de livraison indisponibles.");
+          setWilayasLoaded(true);
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!wilayasLoaded || !wilaya) return;
+
+    saveDeliveryPreference(wilaya, deliveryMode);
+    let active = true;
+
+    fetch(`/api/delivery?wilaya=${encodeURIComponent(wilaya)}&mode=${deliveryMode}`, { cache: "no-store" })
+      .then(async (response) => {
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(data.error || "Tarifs de livraison indisponibles.");
+        if (active) {
+          setDeliveryResult({ key: deliveryKey, pricing: data as DeliveryPricing });
+          setDeliveryFailure((current) => (current?.key === deliveryKey ? null : current));
+        }
+      })
+      .catch((reason: unknown) => {
+        if (active) {
+          setDeliveryResult((current) => (current?.key === deliveryKey ? null : current));
+          setDeliveryFailure({
+            key: deliveryKey,
+            message: reason instanceof Error ? reason.message : "Tarifs de livraison indisponibles.",
+          });
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [deliveryKey, deliveryMode, wilaya, wilayasLoaded]);
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+
+    if (!delivery) {
+      setError(deliveryError || "Les frais de livraison ne sont pas encore disponibles.");
+      return;
+    }
+
     setProcessing(true);
     setError("");
 
@@ -26,12 +122,12 @@ export default function CheckoutPage() {
       email: form.get("email"),
       wilaya: form.get("wilaya"),
       commune: form.get("commune"),
+      deliveryMode,
       address: form.get("address"),
       note: form.get("note"),
       source: items.find((item) => item.source)?.source,
       items: items.map((item) => ({
         productId: item.productId,
-        name: item.name,
         variant: item.variant,
         quantity: item.quantity,
       })),
@@ -93,20 +189,44 @@ export default function CheckoutPage() {
               </div>
               <div>
                 <label className="mb-1 block text-sm font-medium text-slate-700">Wilaya</label>
-                <select required name="wilaya" defaultValue="Alger" className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none">
-                  <option value="Alger">Alger</option>
-                  <option value="Bouira">Bouira</option>
-                  <option value="Blida">Blida</option>
-                  <option value="Oran">Oran</option>
+                <select required name="wilaya" value={wilaya} disabled={!wilayasLoaded || wilayas.length === 0} onChange={(event) => setWilaya(event.target.value)} className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none disabled:opacity-60">
+                  {wilayas.length === 0 ? (
+                    <option value="">{wilayasLoaded ? "Aucune wilaya disponible" : "Chargement…"}</option>
+                  ) : (
+                    wilayas.map((entry) => <option key={entry.id} value={entry.wilaya}>{entry.wilaya}</option>)
+                  )}
                 </select>
+                {wilayasError && <p className="mt-1 text-xs text-rose-600">{wilayasError}</p>}
               </div>
+              <div>
+                <h2 className="text-xl font-bold text-slate-900">Mode de livraison</h2>
+                <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                  {DELIVERY_MODES.map((mode) => (
+                    <label key={mode} className={`cursor-pointer rounded-2xl border p-4 ${deliveryMode === mode ? "border-orange-500 bg-orange-50" : "border-slate-200"}`}>
+                      <input type="radio" name="deliveryMode" value={mode} checked={deliveryMode === mode} onChange={() => setDeliveryMode(mode)} className="mr-2" />
+                      <span className="font-semibold">{mode === "HOME" ? "Livraison à domicile" : "Bureau de livraison"}</span>
+                      {delivery && (
+                        <span className="mt-1 block text-sm text-slate-600">
+                          {formatCurrency(mode === "HOME" ? delivery.officeFee + delivery.homeSurcharge : delivery.officeFee)}
+                        </span>
+                      )}
+                    </label>
+                  ))}
+                </div>
+                {deliveryLoading && <p className="mt-3 text-sm text-slate-500">Calcul des frais de livraison…</p>}
+                {!deliveryLoading && deliveryError && <p className="mt-3 text-sm text-rose-600">{deliveryError}</p>}
+              </div>
+
               <div>
                 <label className="mb-1 block text-sm font-medium text-slate-700">Commune</label>
                 <input required name="commune" className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none" />
               </div>
               <div className="sm:col-span-2">
-                <label className="mb-1 block text-sm font-medium text-slate-700">Adresse</label>
-                <textarea required name="address" rows={3} className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none" />
+                <label className="mb-1 block text-sm font-medium text-slate-700">
+                  {deliveryMode === "HOME" ? "Adresse de livraison" : "Adresse ou repère (facultatif)"}
+                </label>
+                <textarea required={deliveryMode === "HOME"} name="address" rows={3} className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none" />
+                {deliveryMode === "OFFICE" && <p className="mt-1 text-xs text-slate-500">Le retrait se fait au bureau de livraison de votre commune.</p>}
               </div>
               <div className="sm:col-span-2">
                 <label className="mb-1 block text-sm font-medium text-slate-700">Remarque</label>
@@ -137,11 +257,14 @@ export default function CheckoutPage() {
           </div>
           <div className="mt-6 space-y-3 border-t border-slate-200 pt-4 text-sm text-slate-600">
             <div className="flex justify-between"><span>Sous-total</span><span>{formatCurrency(subtotal)}</span></div>
-            <div className="flex justify-between"><span>Livraison</span><span>{formatCurrency(shippingFee)}</span></div>
+            <div className="flex justify-between"><span>Frais de livraison au bureau</span><span>{delivery ? formatCurrency(delivery.officeFee) : "—"}</span></div>
+            {deliveryMode === "HOME" && <div className="flex justify-between"><span>Supplément à domicile</span><span>{delivery ? formatCurrency(delivery.homeSurcharge) : "—"}</span></div>}
+            <div className="flex justify-between font-semibold text-slate-900"><span>Livraison</span><span>{delivery ? formatCurrency(delivery.shippingFee) : "—"}</span></div>
             <div className="flex justify-between"><span>Réduction</span><span>{formatCurrency(0)}</span></div>
-            <div className="flex justify-between border-t border-slate-200 pt-3 text-base font-bold text-slate-900"><span>Total</span><span>{formatCurrency(total)}</span></div>
+            <div className="flex justify-between border-t border-slate-200 pt-3 text-base font-bold text-slate-900"><span>Total</span><span>{total === null ? "—" : formatCurrency(total)}</span></div>
           </div>
-          <button type="submit" formAction="" disabled={processing} className="mt-6 w-full rounded-full bg-slate-900 px-5 py-3 font-semibold text-white disabled:opacity-60">
+          <p className="mt-3 text-xs text-slate-500">Les frais de livraison sont recalculés côté serveur au moment de la validation.</p>
+          <button type="submit" disabled={processing || !delivery || Boolean(deliveryError)} className="mt-6 w-full rounded-full bg-slate-900 px-5 py-3 font-semibold text-white disabled:opacity-60">
             {processing ? "Validation..." : "Valider la commande"}
           </button>
         </aside>

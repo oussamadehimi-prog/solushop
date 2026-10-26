@@ -1,0 +1,1 @@
+ALTER TABLE "ShippingRate" ADD COLUMN "active" BOOLEAN NOT NULL DEFAULT true;

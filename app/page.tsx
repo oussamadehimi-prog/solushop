@@ -3,20 +3,24 @@ import Image from "next/image";
 import { ArrowRight, ShieldCheck, Sparkles, Truck } from "lucide-react";
 import { ProductCard } from "@/components/product-card";
 import { prisma } from "@/lib/prisma";
-import { formatCurrency, getProductDiscount, getProductPrice, getSafeImageUrl } from "@/lib/utils";
+import { getCurrentUser } from "@/lib/auth";
+import { isAdminRole } from "@/lib/roles";
+import { getSafeImageUrl } from "@/lib/utils";
 
 export default async function HomePage() {
-  const categories = await prisma.category.findMany({ where: { active: true }, take: 6 });
-  const featuredProducts = await prisma.product.findMany({
-    where: { active: true, featured: true },
-    include: { category: true, images: true },
-    take: 6,
-  });
-  const promotions = await prisma.product.findMany({
-    where: { active: true, promoPrice: { not: null } },
-    include: { category: true, images: true },
-    take: 6,
-  });
+  const user = await getCurrentUser();
+  const [categories, products] = await Promise.all([
+    prisma.category.findMany({ where: { active: true }, orderBy: { name: "asc" } }),
+    prisma.product.findMany({
+      where: { active: true, stock: { gt: 0 } },
+      include: { category: true, images: true },
+      orderBy: { createdAt: "desc" },
+    }),
+  ]);
+
+  const promotions = products.filter((product) => product.promoPrice !== null && product.promoPrice < product.price);
+  const promotionIds = new Set(promotions.map((product) => product.id));
+  const allProducts = products.filter((product) => !promotionIds.has(product.id));
 
   return (
     <div className="mx-auto max-w-7xl space-y-10 px-4 py-8">
@@ -38,9 +42,11 @@ export default async function HomePage() {
                 Acheter maintenant
                 <ArrowRight className="h-4 w-4" />
               </Link>
-              <Link href="/admin" className="rounded-full border border-white/30 px-5 py-3 font-semibold text-white hover:bg-white/5">
-                Dashboard admin
-              </Link>
+              {user && isAdminRole(user.role) && (
+                <Link href="/admin" className="rounded-full border border-white/30 px-5 py-3 font-semibold text-white hover:bg-white/5">
+                  Dashboard admin
+                </Link>
+              )}
             </div>
           </div>
 
@@ -65,7 +71,7 @@ export default async function HomePage() {
           <Link href="/products" className="text-sm font-medium text-orange-600">Voir tout</Link>
         </div>
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
-          {categories.map((category) => (
+          {categories.length === 0 ? <p className="text-slate-500">Aucune catégorie disponible.</p> : categories.map((category) => (
             <Link key={category.id} href={`/products?category=${category.slug}`} className="group rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition hover:-translate-y-1">
               <div className="mb-4 h-32 overflow-hidden rounded-xl bg-gradient-to-br from-slate-100 to-slate-200">
                 <Image src={getSafeImageUrl(category.image)} alt={category.name} width={800} height={600} className="h-full w-full object-cover transition group-hover:scale-105" />
@@ -78,11 +84,11 @@ export default async function HomePage() {
 
       <section>
         <div className="mb-5 flex items-center justify-between">
-          <h2 className="text-2xl font-bold text-slate-900">Produits populaires</h2>
+          <h2 className="text-2xl font-bold text-slate-900">Promotions</h2>
           <Link href="/products" className="text-sm font-medium text-orange-600">Découvrir</Link>
         </div>
         <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
-          {featuredProducts.map((product) => (
+          {promotions.length === 0 ? <p className="text-slate-500">Aucune promotion disponible.</p> : promotions.map((product) => (
             <ProductCard
               key={product.id}
               product={{
@@ -103,31 +109,13 @@ export default async function HomePage() {
 
       <section>
         <div className="mb-5 flex items-center justify-between">
-          <h2 className="text-2xl font-bold text-slate-900">Promotions</h2>
+          <h2 className="text-2xl font-bold text-slate-900">Tous nos produits</h2>
+          <Link href="/products" className="text-sm font-medium text-orange-600">Voir tout</Link>
         </div>
         <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
-          {promotions.map((product) => {
-            const discount = getProductDiscount(product);
-            return (
-              <div key={product.id} className="rounded-2xl border border-orange-100 bg-orange-50 p-4 shadow-sm">
-                <div className="mb-3 flex items-center justify-between">
-                  <span className="rounded-full bg-orange-500 px-2 py-1 text-xs font-bold uppercase text-white">-{discount}%</span>
-                  <span className="text-xs uppercase tracking-[0.2em] text-slate-500">Promo</span>
-                </div>
-                <div className="space-y-2">
-                  <p className="text-xl font-bold text-slate-900">{product.name}</p>
-                  <p className="text-sm text-slate-600">{product.shortDescription}</p>
-                  <div className="flex items-center gap-2">
-                    <span className="text-2xl font-black text-slate-900">{formatCurrency(getProductPrice(product))}</span>
-                    <span className="text-sm text-slate-400 line-through">{formatCurrency(product.oldPrice ?? product.price)}</span>
-                  </div>
-                  <Link href={`/product/${product.slug}`} className="inline-flex rounded-full bg-slate-900 px-4 py-2 text-sm font-medium text-white">
-                    Voir l’offre
-                  </Link>
-                </div>
-              </div>
-            );
-          })}
+          {allProducts.length === 0 ? <p className="text-slate-500">Aucun produit disponible pour le moment.</p> : allProducts.map((product) => (
+            <ProductCard key={product.id} product={{ id: product.id, name: product.name, slug: product.slug, price: product.price, oldPrice: product.oldPrice, promoPrice: product.promoPrice, stock: product.stock, category: product.category, images: product.images.map((image) => ({ url: image.url, isPrimary: image.isPrimary })) }} />
+          ))}
         </div>
       </section>
     </div>

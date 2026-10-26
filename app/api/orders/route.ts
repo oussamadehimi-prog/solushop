@@ -2,22 +2,39 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { buildOrderNumber } from "@/lib/utils";
 import { z } from "zod";
+import { DELIVERY_MODES, getDeliveryPricing } from "@/lib/delivery";
 
-const orderSchema = z.object({
-  customerName: z.string().trim().min(2).max(120),
-  phone: z.string().trim().min(6).max(30),
-  email: z.string().trim().email().max(160).optional().or(z.literal("")),
-  wilaya: z.string().trim().min(2).max(80),
-  commune: z.string().trim().min(2).max(100),
-  address: z.string().trim().min(5).max(500),
-  note: z.string().trim().max(1000).optional().or(z.literal("")),
-  source: z.enum(["instagram", "facebook", "tiktok", "whatsapp", "direct"]).optional(),
-  items: z.array(z.object({
+const orderItemSchema = z
+  .object({
     productId: z.string().min(1),
     variant: z.string().trim().max(120).optional().nullable(),
     quantity: z.number().int().min(1).max(99),
-  })).min(1).max(50),
-});
+  })
+  .strict();
+
+const orderSchema = z
+  .object({
+    customerName: z.string().trim().min(2).max(120),
+    phone: z.string().trim().min(6).max(30),
+    email: z.string().trim().email().max(160).optional().or(z.literal("")),
+    wilaya: z.string().trim().min(2).max(80),
+    commune: z.string().trim().min(2).max(100),
+    address: z.string().trim().max(500).optional().or(z.literal("")),
+    note: z.string().trim().max(1000).optional().or(z.literal("")),
+    source: z.enum(["instagram", "facebook", "tiktok", "whatsapp", "direct"]).optional(),
+    deliveryMode: z.enum(DELIVERY_MODES),
+    items: z.array(orderItemSchema).min(1).max(50),
+  })
+  .strict()
+  .superRefine((value, ctx) => {
+    if (value.deliveryMode === "HOME" && (!value.address || value.address.trim().length < 5)) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["address"],
+        message: "Une adresse complète est requise pour la livraison à domicile.",
+      });
+    }
+  });
 
 export async function POST(request: Request) {
   try {
@@ -27,9 +44,13 @@ export async function POST(request: Request) {
     } catch {
       return NextResponse.json({ error: "Corps de requête JSON invalide." }, { status: 400 });
     }
+
     const parsed = orderSchema.safeParse(payload);
     if (!parsed.success) {
-      return NextResponse.json({ error: "Vérifiez les informations de livraison." }, { status: 400 });
+      return NextResponse.json(
+        { error: "Vérifiez les informations de livraison. Une adresse complète est requise pour la livraison à domicile." },
+        { status: 400 },
+      );
     }
 
     const body = parsed.data;
@@ -57,8 +78,8 @@ export async function POST(request: Request) {
         orderItemsData.push({ productId: product.id, quantity: item.quantity, price, total, variant: item.variant ?? null });
       }
 
-      const shippingRate = await tx.shippingRate.findUnique({ where: { wilaya: body.wilaya } });
-      const shippingFee = shippingRate?.cost ?? 400;
+      const delivery = await getDeliveryPricing(tx, body.wilaya, body.deliveryMode);
+      const shippingFee = delivery.shippingFee;
       const discount = 0;
       const orderNumber = buildOrderNumber();
       const order = await tx.order.create({
@@ -74,9 +95,10 @@ export async function POST(request: Request) {
           email: body.email || null,
           wilaya: body.wilaya,
           commune: body.commune,
-          address: body.address,
+          address: body.address?.trim() ?? "",
           note: body.note || null,
           source: body.source ?? "direct",
+          deliveryMode: body.deliveryMode,
           paymentMethod: "COD",
           items: { create: orderItemsData },
           payment: { create: { method: "COD", status: "PENDING", reference: `PAY-${orderNumber}` } },
@@ -86,7 +108,17 @@ export async function POST(request: Request) {
       return order;
     });
 
-    return NextResponse.json({ ok: true, order: { number: order.number, status: order.status, total: order.total } });
+    return NextResponse.json({
+      ok: true,
+      order: {
+        number: order.number,
+        status: order.status,
+        deliveryMode: order.deliveryMode,
+        shippingFee: order.shippingFee,
+        subtotal: order.subtotal,
+        total: order.total,
+      },
+    });
   } catch (error) {
     const message = error instanceof Error ? error.message : "";
     if (message.startsWith("OUT_OF_STOCK:")) {
@@ -94,6 +126,18 @@ export async function POST(request: Request) {
     }
     if (message === "PRODUCT_NOT_FOUND") {
       return NextResponse.json({ error: "Un produit de votre panier n’est plus disponible." }, { status: 400 });
+    }
+    if (message === "DELIVERY_WILAYA_UNAVAILABLE") {
+      return NextResponse.json(
+        { error: "Cette wilaya n’est plus disponible à la livraison. Choisissez une autre wilaya." },
+        { status: 409 },
+      );
+    }
+    if (message === "DELIVERY_NOT_CONFIGURED") {
+      return NextResponse.json(
+        { error: "Les tarifs de livraison ne sont pas encore configurés par l’administrateur." },
+        { status: 503 },
+      );
     }
     console.error("Guest order creation failed", error);
     return NextResponse.json({ error: "Impossible d’enregistrer la commande." }, { status: 500 });

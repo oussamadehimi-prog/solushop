@@ -3,11 +3,103 @@
 import Link from "next/link";
 import Image from "next/image";
 import { Minus, Plus, Trash2 } from "lucide-react";
+import { useEffect, useState } from "react";
 import { useCart } from "@/components/cart-provider";
+import {
+  DELIVERY_MODES,
+  readDeliveryPreference,
+  saveDeliveryPreference,
+  type DeliveryMode,
+  type DeliveryPricing,
+  type DeliveryWilaya,
+  type DeliveryWilayaList,
+} from "@/lib/delivery-config";
 import { formatCurrency } from "@/lib/utils";
 
 export default function CartPage() {
   const { items, subtotal, removeItem, updateQuantity, clear } = useCart();
+  const [deliveryMode, setDeliveryMode] = useState<DeliveryMode>("OFFICE");
+  const [wilaya, setWilaya] = useState("");
+  const [wilayas, setWilayas] = useState<DeliveryWilaya[]>([]);
+  const [wilayasError, setWilayasError] = useState("");
+  const [wilayasLoaded, setWilayasLoaded] = useState(false);
+  const [deliveryResult, setDeliveryResult] = useState<{ key: string; pricing: DeliveryPricing } | null>(null);
+  const [deliveryFailure, setDeliveryFailure] = useState<{ key: string; message: string } | null>(null);
+  const deliveryKey = `${wilaya}|${deliveryMode}`;
+  const delivery = deliveryResult?.key === deliveryKey ? deliveryResult.pricing : null;
+  const deliveryError = deliveryFailure?.key === deliveryKey ? deliveryFailure.message : "";
+  const deliveryLoading = Boolean(wilaya) && !delivery && !deliveryError;
+
+  useEffect(() => {
+    let active = true;
+
+    fetch("/api/delivery/wilayas", { cache: "no-store" })
+      .then(async (response) => {
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(data.error || "Wilayas de livraison indisponibles.");
+        return data as Partial<DeliveryWilayaList>;
+      })
+      .then((data) => {
+        if (!active) return;
+
+        const list = Array.isArray(data.wilayas) ? data.wilayas : [];
+        const preference = readDeliveryPreference();
+        const preferred = preference
+          ? list.find((entry) => entry.wilaya.toLowerCase() === preference.wilaya.toLowerCase())
+          : undefined;
+
+        setWilayas(list);
+        setWilaya(preferred?.wilaya ?? list[0]?.wilaya ?? "");
+        if (preference) setDeliveryMode(preference.mode);
+        if (!data.configured) {
+          setWilayasError("Les tarifs de livraison ne sont pas encore configurés par l’administrateur.");
+        } else if (list.length === 0) {
+          setWilayasError("Aucune wilaya n’est actuellement disponible pour la livraison.");
+        }
+        setWilayasLoaded(true);
+      })
+      .catch((reason: unknown) => {
+        if (active) {
+          setWilayas([]);
+          setWilayasError(reason instanceof Error ? reason.message : "Wilayas de livraison indisponibles.");
+          setWilayasLoaded(true);
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!wilayasLoaded || !wilaya) return;
+
+    saveDeliveryPreference(wilaya, deliveryMode);
+    let active = true;
+
+    fetch(`/api/delivery?wilaya=${encodeURIComponent(wilaya)}&mode=${deliveryMode}`, { cache: "no-store" })
+      .then(async (response) => {
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(data.error || "Tarifs de livraison indisponibles.");
+        if (active) {
+          setDeliveryResult({ key: deliveryKey, pricing: data as DeliveryPricing });
+          setDeliveryFailure((current) => (current?.key === deliveryKey ? null : current));
+        }
+      })
+      .catch((reason: unknown) => {
+        if (active) {
+          setDeliveryResult((current) => (current?.key === deliveryKey ? null : current));
+          setDeliveryFailure({
+            key: deliveryKey,
+            message: reason instanceof Error ? reason.message : "Tarifs de livraison indisponibles.",
+          });
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [deliveryKey, deliveryMode, wilaya, wilayasLoaded]);
 
   if (items.length === 0) {
     return (
@@ -64,11 +156,60 @@ export default function CartPage() {
 
         <aside className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
           <p className="text-lg font-bold text-slate-900">Résumé</p>
+
+          <div className="mt-5 space-y-3 rounded-2xl bg-slate-50 p-4">
+            <p className="text-sm font-bold text-slate-900">Mode de livraison</p>
+            <label className="grid gap-1 text-xs font-medium text-slate-600">
+              Wilaya
+              <select
+                value={wilaya}
+                disabled={!wilayasLoaded || wilayas.length === 0}
+                onChange={(event) => setWilaya(event.target.value)}
+                className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none disabled:opacity-60"
+              >
+                {wilayas.length === 0 ? (
+                  <option value="">{wilayasLoaded ? "Aucune wilaya disponible" : "Chargement…"}</option>
+                ) : (
+                  wilayas.map((entry) => (
+                    <option key={entry.id} value={entry.wilaya}>{entry.wilaya}</option>
+                  ))
+                )}
+              </select>
+              {wilayasError && <span className="text-xs text-rose-600">{wilayasError}</span>}
+            </label>
+            <div className="grid grid-cols-2 gap-2">
+              {DELIVERY_MODES.map((mode) => (
+                <label
+                  key={mode}
+                  className={`cursor-pointer rounded-xl border p-2 text-center text-sm ${deliveryMode === mode ? "border-orange-500 bg-orange-50 text-slate-900" : "border-slate-200 bg-white text-slate-600"}`}
+                >
+                  <input
+                    type="radio"
+                    name="cartDeliveryMode"
+                    checked={deliveryMode === mode}
+                    onChange={() => setDeliveryMode(mode)}
+                    className="mr-1"
+                  />
+                  {mode === "HOME" ? "Domicile" : "Bureau"}
+                </label>
+              ))}
+            </div>
+            {deliveryLoading && <p className="text-xs text-slate-500">Calcul des frais de livraison…</p>}
+            {!deliveryLoading && delivery && (
+              <div className="space-y-1 text-xs text-slate-600">
+                <p>Frais de livraison au bureau : {formatCurrency(delivery.officeFee)}</p>
+                {deliveryMode === "HOME" && <p>Supplément à domicile : {formatCurrency(delivery.homeSurcharge)}</p>}
+                <p className="font-semibold text-slate-900">Frais appliqués : {formatCurrency(delivery.shippingFee)}</p>
+              </div>
+            )}
+            {!deliveryLoading && deliveryError && <p className="text-xs text-rose-600">{deliveryError}</p>}
+          </div>
+
           <div className="mt-5 space-y-3 text-sm text-slate-600">
             <div className="flex justify-between"><span>Sous-total</span><span>{formatCurrency(subtotal)}</span></div>
-            <div className="flex justify-between"><span>Livraison</span><span>{formatCurrency(400)}</span></div>
+            <div className="flex justify-between"><span>Livraison</span><span>{delivery ? formatCurrency(delivery.shippingFee) : "—"}</span></div>
             <div className="flex justify-between"><span>Réduction</span><span>{formatCurrency(0)}</span></div>
-            <div className="mt-4 flex justify-between border-t border-slate-200 pt-4 text-base font-bold text-slate-900"><span>Total</span><span>{formatCurrency(subtotal + 400)}</span></div>
+            <div className="mt-4 flex justify-between border-t border-slate-200 pt-4 text-base font-bold text-slate-900"><span>Total</span><span>{delivery ? formatCurrency(subtotal + delivery.shippingFee) : "—"}</span></div>
           </div>
 
           <div className="mt-6 space-y-3">
@@ -78,9 +219,15 @@ export default function CartPage() {
             <button type="button" onClick={clear} className="block w-full rounded-full border border-rose-200 px-4 py-3 font-medium text-rose-600">
               Vider le panier
             </button>
-            <Link href="/checkout" className="block rounded-full bg-slate-900 px-4 py-3 text-center font-medium text-white">
-              Passer la commande
-            </Link>
+            {delivery ? (
+              <Link href="/checkout" className="block rounded-full bg-slate-900 px-4 py-3 text-center font-medium text-white">
+                Passer la commande
+              </Link>
+            ) : (
+              <span className="block cursor-not-allowed rounded-full bg-slate-300 px-4 py-3 text-center font-medium text-white">
+                Passer la commande
+              </span>
+            )}
           </div>
         </aside>
       </div>

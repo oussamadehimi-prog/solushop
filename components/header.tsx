@@ -4,10 +4,27 @@ import Link from "next/link";
 import { ShoppingCart, Search, Shield, Menu } from "lucide-react";
 import { useCart } from "@/components/cart-provider";
 import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { isAdminRole } from "@/lib/roles";
 
-export function Header() {
+type HeaderUser = {
+  id: string;
+  name: string;
+  email: string;
+  role: string;
+};
+
+export function Header({ user }: { user: HeaderUser | null }) {
   const { count } = useCart();
+  const router = useRouter();
   const [menuOpen, setMenuOpen] = useState(false);
+  const isAdmin = user ? isAdminRole(user.role) : false;
+
+  async function logout() {
+    await fetch("/api/auth/logout", { method: "POST" });
+    router.push("/");
+    router.refresh();
+  }
 
   return (
     <header className="sticky top-0 z-50 border-b border-slate-200 bg-white/90 backdrop-blur">
@@ -35,9 +52,6 @@ export function Header() {
           <Link href="/products" className="hidden text-sm font-medium text-slate-700 md:inline-flex">
             Produits
           </Link>
-          <Link href="/track-order" className="hidden text-sm font-medium text-slate-700 md:inline-flex">
-            Suivre ma commande
-          </Link>
           <Link href="/cart" className="relative rounded-full border border-slate-200 p-2 text-slate-800">
             <ShoppingCart className="h-5 w-5" />
             {count > 0 && (
@@ -46,17 +60,39 @@ export function Header() {
               </span>
             )}
           </Link>
-          <Link href="/login" className="inline-flex items-center gap-2 rounded-full bg-slate-900 px-4 py-2 text-sm font-medium text-white">
-            <Shield className="h-4 w-4" />
-            <span className="hidden sm:inline">Espace admin</span>
-          </Link>
+          {user ? (
+            <>
+              {isAdmin && (
+                <Link href="/admin" className="inline-flex items-center gap-2 rounded-full bg-slate-900 px-4 py-2 text-sm font-medium text-white">
+                  <Shield className="h-4 w-4" />
+                  <span className="hidden sm:inline">Espace admin</span>
+                </Link>
+              )}
+              <button
+                type="button"
+                onClick={logout}
+                className="hidden text-sm font-medium text-rose-700 sm:inline-flex"
+              >
+                Déconnexion
+              </button>
+              <span className="hidden max-w-32 truncate text-sm font-medium text-slate-700 lg:inline" title={user.email}>
+                {user.name}
+              </span>
+            </>
+          ) : (
+            <Link href="/login" className="inline-flex items-center gap-2 rounded-full bg-slate-900 px-4 py-2 text-sm font-medium text-white">
+              <Shield className="h-4 w-4" />
+              <span className="hidden sm:inline">Connexion</span>
+            </Link>
+          )}
         </nav>
       </div>
       {menuOpen && (
         <nav className="border-t border-slate-200 bg-white px-4 py-3 md:hidden">
           <div className="mx-auto flex max-w-7xl flex-col gap-3 text-sm font-medium text-slate-700">
             <Link href="/products" onClick={() => setMenuOpen(false)}>Produits</Link>
-            <Link href="/track-order" onClick={() => setMenuOpen(false)}>Suivre ma commande</Link>
+            {user && isAdmin && <Link href="/admin" onClick={() => setMenuOpen(false)}>Dashboard Admin</Link>}
+            {user && <button type="button" className="text-left text-rose-700" onClick={logout}>Déconnexion</button>}
           </div>
         </nav>
       )}

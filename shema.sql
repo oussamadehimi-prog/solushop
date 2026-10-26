@@ -44,7 +44,6 @@ CREATE TABLE public.Product (
   price double precision NOT NULL,
   oldPrice double precision,
   promoPrice double precision,
-  sku text NOT NULL,
   brand text,
   stock integer NOT NULL DEFAULT 0,
   lowStockThreshold integer NOT NULL DEFAULT 5,
@@ -117,6 +116,8 @@ CREATE TABLE public.Order (
   createdAt timestamp without time zone NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updatedAt timestamp without time zone NOT NULL DEFAULT CURRENT_TIMESTAMP,
   rejectionReason text,
+  deliveryMode text,
+  stockRestoredAt timestamp without time zone,
   CONSTRAINT Order_pkey PRIMARY KEY (id),
   CONSTRAINT Order_userId_fkey FOREIGN KEY (userId) REFERENCES public.User(id)
 );
@@ -185,8 +186,16 @@ CREATE TABLE public.ShippingRate (
   id text NOT NULL,
   wilaya text NOT NULL,
   cost double precision NOT NULL,
+  active boolean NOT NULL DEFAULT true,
   createdAt timestamp without time zone NOT NULL DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT ShippingRate_pkey PRIMARY KEY (id)
+);
+CREATE TABLE public.DeliverySetting (
+  id text NOT NULL DEFAULT 'default'::text,
+  officeFee double precision,
+  homeSurcharge double precision,
+  updatedAt timestamp without time zone NOT NULL,
+  CONSTRAINT DeliverySetting_pkey PRIMARY KEY (id)
 );
 CREATE TABLE public.Notification (
   id text NOT NULL,

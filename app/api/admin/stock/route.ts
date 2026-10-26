@@ -5,7 +5,7 @@ import { z } from "zod";
 
 export async function GET() {
   if (!(await getAdminSession())) return NextResponse.json({ error: "Accès administrateur requis." }, { status: 403 });
-  return NextResponse.json({ products: await prisma.product.findMany({ select: { id: true, name: true, sku: true, stock: true, lowStockThreshold: true, active: true }, orderBy: { stock: "asc" } }) });
+  return NextResponse.json({ products: await prisma.product.findMany({ select: { id: true, name: true, stock: true, lowStockThreshold: true, active: true }, orderBy: { stock: "asc" } }) });
 }
 export async function PATCH(request: Request) {
   if (!(await getAdminSession())) return NextResponse.json({ error: "Accès administrateur requis." }, { status: 403 });

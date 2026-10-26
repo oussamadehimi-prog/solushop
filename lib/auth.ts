@@ -1,6 +1,7 @@
 import { cookies } from "next/headers";
 import jwt from "jsonwebtoken";
 import { prisma } from "@/lib/prisma";
+import { isAdminRole, isClientRole } from "@/lib/roles";
 
 export const SESSION_COOKIE = "shop_session";
 
@@ -11,8 +12,14 @@ export type SessionUser = {
   role: string;
 };
 
+function getJwtSecret() {
+  if (process.env.JWT_SECRET) return process.env.JWT_SECRET;
+  if (process.env.NODE_ENV !== "production") return "dev-secret-change-me";
+  throw new Error("JWT_SECRET must be configured in production.");
+}
+
 export function signSession(user: SessionUser) {
-  return jwt.sign(user, process.env.JWT_SECRET || "dev-secret-change-me", {
+  return jwt.sign(user, getJwtSecret(), {
     expiresIn: "7d",
   });
 }
@@ -24,7 +31,7 @@ export async function getSessionUser(): Promise<SessionUser | null> {
   if (!token) return null;
 
   try {
-    const payload = jwt.verify(token, process.env.JWT_SECRET || "dev-secret-change-me") as SessionUser;
+    const payload = jwt.verify(token, getJwtSecret()) as SessionUser;
     return payload;
   } catch {
     return null;
@@ -35,12 +42,18 @@ export async function getCurrentUser() {
   const session = await getSessionUser();
   if (!session) return null;
 
-  return prisma.user.findUnique({
+  const user = await prisma.user.findUnique({
     where: { id: session.id },
     include: {
       addresses: true,
     },
   });
+
+  if (!user || (!isAdminRole(user.role) && !isClientRole(user.role))) {
+    return null;
+  }
+
+  return user;
 }
 
 export async function requireUser() {
@@ -53,7 +66,7 @@ export async function requireUser() {
 
 export async function requireAdmin() {
   const user = await requireUser();
-  if (user.role !== "ADMIN" && user.role !== "SUPER_ADMIN") {
+  if (!isAdminRole(user.role)) {
     throw new Error("Forbidden");
   }
   return user;
@@ -61,7 +74,7 @@ export async function requireAdmin() {
 
 export async function getAdminSession() {
   const user = await getCurrentUser();
-  if (!user || (user.role !== "ADMIN" && user.role !== "SUPER_ADMIN")) {
+  if (!user || !isAdminRole(user.role)) {
     return null;
   }
   return user;

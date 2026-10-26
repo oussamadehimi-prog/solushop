@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { compare } from "bcryptjs";
 import { prisma } from "@/lib/prisma";
 import { SESSION_COOKIE, signSession } from "@/lib/auth";
+import { isAdminRole, isClientRole } from "@/lib/roles";
 
 export async function POST(request: Request) {
   try {
@@ -20,7 +21,7 @@ export async function POST(request: Request) {
     }
 
     const user = await prisma.user.findUnique({ where: { email } });
-    if (!user || (user.role !== "ADMIN" && user.role !== "SUPER_ADMIN")) {
+    if (!user || (!isAdminRole(user.role) && !isClientRole(user.role))) {
       return NextResponse.json({ error: "Identifiants invalides." }, { status: 401 });
     }
 
@@ -33,6 +34,7 @@ export async function POST(request: Request) {
     const response = NextResponse.json({
       ok: true,
       user: { id: user.id, name: user.name, email: user.email, role: user.role },
+      redirectTo: isAdminRole(user.role) ? "/admin" : "/",
     });
     response.cookies.set(SESSION_COOKIE, token, {
       httpOnly: true,

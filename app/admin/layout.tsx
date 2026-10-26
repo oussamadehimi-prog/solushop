@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { requireAdmin } from "@/lib/auth";
+import { getCurrentUser } from "@/lib/auth";
+import { isAdminRole } from "@/lib/roles";
 import { AdminSessionActions } from "@/components/admin-session-actions";
 
 const links = [
@@ -18,11 +19,9 @@ const links = [
 ];
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
-  try {
-    await requireAdmin();
-  } catch {
-    redirect("/login");
-  }
+  const user = await getCurrentUser();
+  if (!user) redirect("/login");
+  if (!isAdminRole(user.role)) redirect("/");
 
   return (
     <div className="min-h-screen bg-slate-100">

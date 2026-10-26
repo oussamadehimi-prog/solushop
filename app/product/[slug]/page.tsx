@@ -116,8 +116,6 @@ export default async function ProductPage({
               <p className="mt-2 text-lg font-semibold text-slate-900">{product.brand ?? "Premium"}</p>
             </div>
             <div className="rounded-2xl border border-slate-200 bg-white p-4">
-              <p className="text-sm font-medium text-slate-500">SKU</p>
-              <p className="mt-2 text-lg font-semibold text-slate-900">{product.sku}</p>
             </div>
           </div>
         </div>

@@ -12,7 +12,6 @@ type Product = {
   description: string;
   categoryId: string;
   brand: string | null;
-  sku: string;
   price: number;
   oldPrice: number | null;
   promoPrice: number | null;
@@ -56,7 +55,6 @@ export function AdminProductForm({
     <form onSubmit={submit} encType="multipart/form-data" className="grid gap-5 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm md:grid-cols-2">
       {product?.id && <input type="hidden" name="id" value={product.id} />}
       <label className="grid gap-1 text-sm font-medium">Nom<input name="name" required defaultValue={product?.name} className="rounded-2xl border p-3" /></label>
-      <label className="grid gap-1 text-sm font-medium">SKU<input name="sku" required defaultValue={product?.sku} className="rounded-2xl border p-3" /></label>
       <label className="grid gap-1 text-sm font-medium">Catégorie<select name="categoryId" required defaultValue={product?.categoryId} className="rounded-2xl border p-3">{categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}</select></label>
       <label className="grid gap-1 text-sm font-medium">Marque<input name="brand" defaultValue={product?.brand ?? ""} className="rounded-2xl border p-3" /></label>
       <label className="grid gap-1 text-sm font-medium">Prix<input name="price" type="number" min="0.01" step="0.01" required defaultValue={product?.price} className="rounded-2xl border p-3" /></label>

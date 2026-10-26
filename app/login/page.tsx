@@ -31,7 +31,7 @@ export default function LoginPage() {
       return;
     }
 
-    router.push("/admin");
+    router.push(payload.redirectTo || "/");
     router.refresh();
   };
 
@@ -55,7 +55,7 @@ export default function LoginPage() {
           </button>
         </form>
 
-        <p className="mt-5 text-sm text-slate-600">Cette connexion est réservée aux administrateurs.</p>
+        <p className="mt-5 text-sm text-slate-600">Connectez-vous pour accéder à votre espace.</p>
       </div>
     </div>
   );
